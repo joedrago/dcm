@@ -14,8 +14,12 @@ set(DYN_LIBS_ONLY true)
 add_subdirectory(ext/dyn)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ext/dyn/src)
 
+add_subdirectory(ext/lua)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ext/lua/src)
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_executable(dcm
     src/main.c
 )
+target_link_libraries(dcm dyn lua)
