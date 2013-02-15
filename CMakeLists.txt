@@ -21,5 +21,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_executable(dcm
     src/main.c
+    src/dcmLuaState.c
+    src/dcmUtil.c
 )
 target_link_libraries(dcm dyn lua)
+
+if(UNIX)
+    target_link_libraries(dcm m)
+endif()
