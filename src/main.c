@@ -1,5 +1,6 @@
 #include "dyn.h"
 #include "lua.h"
+#include "dcmVariant.h"
 #include "dcmLuaState.h"
 #include "dcmUtil.h"
 
@@ -11,18 +12,19 @@ int main(int argc, char **argv)
     if(argc > 1)
     {
         dcmLuaState *state = dcmLuaStateCreate();
-        int len;
-        char *script = dcmFileAlloc(argv[1], &len);
-        if(script)
-        {
-            dcmLuaStateLoadScript(state, argv[1], script, len);
-            if(state->error)
-            {
-                fprintf(stderr, "ERROR: %s\n", state->error);
-            }
-            free(script);
-        }
+        dcmLuaStateAddSubdir(state, argv[1]);
         dcmLuaStateDestroy(state);
+    }
+    {
+        dcmVariant *arg, *p;
+
+        arg = dcmVariantCreate(V_MAP);
+
+        p = dcmVariantCreate(V_STRING);
+        dsCopy(&p->s, "sup sup");
+        dmGetS2P(arg->m, "sup") = p;
+
+        dcmVariantDestroy(arg);
     }
     return 0;
 }

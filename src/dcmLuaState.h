@@ -13,5 +13,6 @@ dcmLuaState *dcmLuaStateCreate();
 void dcmLuaStateDestroy(dcmLuaState *state);
 int dcmLuaStateError(dcmLuaState *state, const char *error);
 int dcmLuaStateLoadScript(dcmLuaState *state, const char *name, const char *script, int len);
+int dcmLuaStateAddSubdir(dcmLuaState *state, const char *dir);
 
 #endif

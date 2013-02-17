@@ -14,16 +14,21 @@ set(DYN_LIBS_ONLY true)
 add_subdirectory(ext/dyn)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ext/dyn/src)
 
+add_subdirectory(ext/genHeader)
 add_subdirectory(ext/lua)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ext/lua/src)
 
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-add_executable(dcm
-    src/main.c
+set(SOURCES
     src/dcmLuaState.c
     src/dcmUtil.c
+    src/dcmVariant.c
+    src/main.c
 )
+genHeader(SOURCES src/dcmBase.lua ${CMAKE_CURRENT_BINARY_DIR}/dcmBaseLua.h dcmBaseLua)
+add_executable(dcm ${SOURCES})
 target_link_libraries(dcm dyn lua)
 
 if(UNIX)

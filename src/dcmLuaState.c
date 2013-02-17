@@ -1,5 +1,10 @@
 #include "dcmLuaState.h"
 
+#include "dyn.h"
+
+#include "dcmBaseLua.h"
+#include "dcmUtil.h"
+
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
@@ -11,6 +16,7 @@ dcmLuaState *dcmLuaStateCreate()
 {
     dcmLuaState *state = calloc(1, sizeof(dcmLuaState));
     state->L = luaL_newstate();
+    dcmLuaStateLoadScript(state, "dcmBase", dcmBaseLuaData, dcmBaseLuaSize);
     return state;
 }
 
@@ -80,4 +86,30 @@ int dcmLuaStateLoadScript(dcmLuaState *state, const char *name, const char *scri
         // failed to load chunk
     }
     return 0;
+}
+
+int dcmLuaStateAddSubdir(dcmLuaState *state, const char *dir)
+{
+    int ret = 1;
+    int len;
+    char *makeFilename = NULL;
+    char *script;
+
+    dsPrintf(&makeFilename, "%s/Makefile.lua", dir);
+    script = dcmFileAlloc(makeFilename, &len);
+    if(script)
+    {
+        dcmLuaStateLoadScript(state, makeFilename, script, len);
+        if(state->error)
+        {
+            fprintf(stderr, "ERROR: %s\n", state->error);
+        }
+        free(script);
+    }
+    else
+    {
+        ret = 0;
+    }
+    dsDestroy(&makeFilename);
+    return ret;
 }
