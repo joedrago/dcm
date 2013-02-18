@@ -61,6 +61,7 @@ void dcmContextAddSubdirectory(dcmContext *context, struct dcmVariant *args)
     }
     else
     {
+        dcmLuaStateError(context->luaState, "add_subdirectory takes exactly one string argument");
     }
 }
 
@@ -97,4 +98,28 @@ void dcmContextIncludeDirectories(dcmContext *context, struct dcmVariant *args)
         printf("  * %s\n", context->includes[i]);
     }
 */
+}
+
+// add_target("platform name", "rule name", "target name", { "relative file #1", ... })
+void dcmContextAddTarget(dcmContext *context, struct dcmVariant *args)
+{
+    // TODO: error checking of any kind
+    const char *platform = args->a[0]->s;
+    const char *rule = args->a[1]->s;
+    const char *target = args->a[2]->s;
+    int i;
+
+    printf("dcmContextAddTarget:\n");
+    printf("* platform: %s\n", platform);
+    printf("* rule: %s\n", rule);
+    printf("* target: %s\n", target);
+
+    for(i = 0; i < daSize(&args->a[3]->a); ++i)
+    {
+        char *fn = NULL;
+        dsCopy(&fn, args->a[3]->a[i]->s);
+        dcmCanonicalizePath(&fn, daTopString(&context->srcPathStack));
+        printf("  * file: %s\n", fn);
+        dsDestroy(&fn);
+    }
 }

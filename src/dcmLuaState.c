@@ -166,6 +166,7 @@ int dcmLuaStateError(dcmLuaState *state, const char *error)
     if(error)
     {
         state->error = strdup(error);
+        luaL_error(state->L, state->error);
     }
 }
 
@@ -224,9 +225,9 @@ static void dcmLuaStateUpdateGlobals(dcmLuaState *state)
 
     lua_pushglobaltable(state->L);
 
-    lua_pushlstring(state->L, srcPath, strlen(srcPath)+1);
+    lua_pushlstring(state->L, srcPath, strlen(srcPath));
     lua_setfield(state->L, -2, "DCM_CURRENT_SOURCE_DIR");
-    lua_pushlstring(state->L, dstPath, strlen(dstPath)+1);
+    lua_pushlstring(state->L, dstPath, strlen(dstPath));
     lua_setfield(state->L, -2, "DCM_CURRENT_BINARY_DIR");
 
     lua_pop(state->L, 1);
@@ -301,6 +302,7 @@ LUA_CONTEXT_IMPLEMENT_FUNC(project,             dcmContextProject);
 LUA_CONTEXT_IMPLEMENT_FUNC(add_subdirectory,    dcmContextAddSubdirectory);
 LUA_CONTEXT_IMPLEMENT_FUNC(add_definitions,     dcmContextAddDefinitions);
 LUA_CONTEXT_IMPLEMENT_FUNC(include_directories, dcmContextIncludeDirectories);
+LUA_CONTEXT_IMPLEMENT_FUNC(add_target,          dcmContextAddTarget);
 
 static const luaL_Reg dcmGlobalFuncs[] =
 {
@@ -310,6 +312,7 @@ static const luaL_Reg dcmGlobalFuncs[] =
     LUA_CONTEXT_DECLARE_FUNC(add_definitions),
     LUA_CONTEXT_DECLARE_FUNC(include_directories),
     LUA_CONTEXT_DECLARE_FUNC(project),
+    LUA_CONTEXT_DECLARE_FUNC(add_target),
     {NULL, NULL}
 };
 

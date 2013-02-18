@@ -25,5 +25,6 @@ void dcmContextProject(dcmContext *context, struct dcmVariant *args);
 void dcmContextAddSubdirectory(dcmContext *context, struct dcmVariant *args);
 void dcmContextAddDefinitions(dcmContext *context, struct dcmVariant *args);
 void dcmContextIncludeDirectories(dcmContext *context, struct dcmVariant *args);
+void dcmContextAddTarget(dcmContext *context, struct dcmVariant *args);
 
 #endif
