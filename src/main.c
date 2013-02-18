@@ -12,8 +12,11 @@ int main(int argc, char **argv)
     if(argc > 1)
     {
         dcmLuaState *state = dcmLuaStateCreate();
-        dcmLuaStateAddSubdir(state, argv[1]);
-        dcmLuaStateDestroy(state);
+        if(state)
+        {
+            dcmLuaStateAddSubdir(state, argv[1]);
+            dcmLuaStateDestroy(state);
+        }
     }
     {
         dcmVariant *arg, *p;

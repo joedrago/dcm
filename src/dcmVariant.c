@@ -27,10 +27,10 @@ void dcmVariantClear(dcmVariant *arg)
             dsDestroy(&arg->s);
             break;
         case V_ARRAY:
-            daDestroyPtr(&arg->a, dcmVariantDestroy);
+            daDestroy(&arg->a, dcmVariantDestroy);
             break;
         case V_MAP:
-            dmDestroyPtr(arg->m, dcmVariantDestroy);
+            dmDestroy(arg->m, dcmVariantDestroy);
             break;
     };
 }
