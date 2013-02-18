@@ -22,6 +22,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 set(SOURCES
+    src/dcmContext.c
     src/dcmLuaState.c
     src/dcmUtil.c
     src/dcmVariant.c

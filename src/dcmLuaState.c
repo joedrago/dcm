@@ -3,6 +3,7 @@
 #include "dyn.h"
 
 #include "dcmBaseLua.h"
+#include "dcmContext.h"
 #include "dcmUtil.h"
 #include "dcmVariant.h"
 
@@ -13,6 +14,10 @@
 
 #include <stdlib.h>
 #include <string.h>
+
+static void dcmLuaStateUpdateGlobals(dcmLuaState *state);
+static void dcmLuaStateRegisterGlobals(dcmLuaState *state);
+static void dcmLuaStateRegisterGlobalVars(dcmLuaState *state);
 
 static dcmVariant *dcmLuaStateIndexToVariant(dcmLuaState *state, int index)
 {
@@ -27,13 +32,19 @@ static dcmVariant *dcmLuaStateIndexToVariant(dcmLuaState *state, int index)
 
     switch (type)
     {
-        //LUA_TNIL
+        // Unimplemented:
+        // LUA_TNIL
+        // LUA_TLIGHTUSERDATA
+        // LUA_TTABLE
+        // LUA_TFUNCTION
+        // LUA_TUSERDATA
+        // LUA_TTHREAD
+
         case LUA_TBOOLEAN:
             ret = dcmVariantCreate(V_STRING);
             s = (lua_toboolean(L, index)) ? "true" : "false";
             dsCopy(&ret->s, s);
             break;
-        //LUA_TLIGHTUSERDATA
         case LUA_TNUMBER:
             ret = dcmVariantCreate(V_STRING);
             sprintf(temp, "%d", (int)lua_tonumber(L, index));
@@ -41,7 +52,7 @@ static dcmVariant *dcmLuaStateIndexToVariant(dcmLuaState *state, int index)
             break;
         case LUA_TSTRING:
             ret = dcmVariantCreate(V_STRING);
-            s = lua_tolstring(L, index, &l);  /* get result */
+            s = lua_tolstring(L, index, &l);
             dsCopy(&ret->s, s);
             break;
         case LUA_TTABLE:
@@ -65,42 +76,33 @@ static dcmVariant *dcmLuaStateIndexToVariant(dcmLuaState *state, int index)
 
                 if(ret->type == V_MAP)
                 {
-                    if(lua_type(L, -1) == LUA_TSTRING)
+                    if(lua_type(L, -2) == LUA_TSTRING)
                     {
-                        s = lua_tolstring(L, -1, &l);  /* get result */
+                        s = lua_tolstring(L, -2, &l);
                     }
-                    else if(lua_type(L, -1) == LUA_TNUMBER)
+                    else if(lua_type(L, -2) == LUA_TNUMBER)
                     {
-                        sprintf(temp, "%d", (int)lua_tonumber(L, -1));
+                        sprintf(temp, "%d", (int)lua_tonumber(L, -2));
                         s = temp;
                     }
 
                     if(s != NULL)
                     {
-                        child = dcmLuaStateIndexToVariant(state, lua_gettop(L) - 1);
+                        child = dcmLuaStateIndexToVariant(state, lua_absindex(L, -1));
                         dmGetS2P(ret->m, s) = child;
                     }
                 }
                 else
                 {
-                    child = dcmLuaStateIndexToVariant(state, lua_gettop(L) - 1);
+                    child = dcmLuaStateIndexToVariant(state, lua_absindex(L, -1));
                     daPush(&ret->a, child);
                 }
-
-
-                // printf("    * %s - %s\n",
-                //        lua_typename(L, lua_type(L, -2)),
-                //        lua_typename(L, lua_type(L, -1)));
 
                 // removes 'value'; keeps 'key' for next iteration
                 lua_pop(L, 1);
             }
 
             break;
-            //LUA_TTABLE
-            //LUA_TFUNCTION
-            //LUA_TUSERDATA
-            //LUA_TTHREAD
     };
 
     if(!ret)
@@ -126,74 +128,10 @@ static dcmVariant *dcmLuaStateArgsToVariant(dcmLuaState *state)
     return ret;
 }
 
-#define PRINTDEPTH(DEPTH) { int d; for(d = 0; d < (DEPTH); ++d) printf("  "); }
-static void printVariant(dcmVariant *v, int depth);
-
-int printVariantMap(dynMap *dm, dynMapEntry *e, void *userData)
-{
-    int *depth = (int *)userData;
-    dcmVariant *v = dmEntryDefaultData(e)->valuePtr;
-    PRINTDEPTH(*depth + 1);
-    printf("* key: %s\n", e->keyStr);
-    printVariant(v, *depth + 2);
-    return 1;
-}
-
-static void printVariant(dcmVariant *v, int depth)
-{
-    int i;
-    switch (v->type)
-    {
-        case V_NONE:
-            PRINTDEPTH(depth);
-            printf("* nil\n");
-            break;
-        case V_STRING:
-            PRINTDEPTH(depth);
-            printf("* string: %s\n", v->s);
-            break;
-        case V_ARRAY:
-            PRINTDEPTH(depth);
-            printf("* array: %d element(s)\n", (int)daSize(&v->a));
-            for(i = 0; i < daSize(&v->a); ++i)
-            {
-                printVariant(v->a[i], depth + 1);
-            }
-            break;
-        case V_MAP:
-            PRINTDEPTH(depth);
-            printf("* map: %d element(s)\n", v->m->count);
-            dmIterate(v->m, printVariantMap, &depth);
-            break;
-    };
-}
-
-static int whatever(lua_State *L)
-{
-    dcmLuaState *state = (dcmLuaState *)L->dcmstate;
-    dcmVariant *variant = dcmLuaStateArgsToVariant(L->dcmstate);
-    printVariant(variant, 0);
-    dcmVariantDestroy(variant);
-    return 0;
-}
-
-static const luaL_Reg dcmGlobalFuncs[] =
-{
-    {"print", whatever},
-    {NULL, NULL}
-};
-
-static void dcmLuaStateRegisterGlobals(dcmLuaState *state)
-{
-    lua_pushglobaltable(state->L);
-    lua_pushglobaltable(state->L);
-    lua_setfield(state->L, -2, "_G");
-    luaL_setfuncs(state->L, dcmGlobalFuncs, 0);
-}
-
-dcmLuaState *dcmLuaStateCreate()
+dcmLuaState *dcmLuaStateCreate(struct dcmContext *context)
 {
     dcmLuaState *state = calloc(1, sizeof(dcmLuaState));
+    state->context = context;
     state->L = luaL_newstate();
     state->L->dcmstate = state;
     luaopen_base(state->L);
@@ -254,6 +192,7 @@ int dcmLuaStateLoadScript(dcmLuaState *state, const char *name, const char *scri
     struct dcmScriptInfo info;
     info.script = script;
     info.len = len;
+    dcmLuaStateUpdateGlobals(state);
     int err = lua_load(state->L, dcmLoadScriptReader, &info, name, "t");
     if(err == LUA_OK)
     {
@@ -278,28 +217,122 @@ int dcmLuaStateLoadScript(dcmLuaState *state, const char *name, const char *scri
     return 0;
 }
 
+static void dcmLuaStateUpdateGlobals(dcmLuaState *state)
+{
+    const char *srcPath = dcmContextSrcPath(state->context);
+    const char *dstPath = dcmContextDstPath(state->context);
+
+    lua_pushglobaltable(state->L);
+
+    lua_pushlstring(state->L, srcPath, strlen(srcPath)+1);
+    lua_setfield(state->L, -2, "DCM_CURRENT_SOURCE_DIR");
+    lua_pushlstring(state->L, dstPath, strlen(dstPath)+1);
+    lua_setfield(state->L, -2, "DCM_CURRENT_BINARY_DIR");
+
+    lua_pop(state->L, 1);
+}
+
 int dcmLuaStateAddSubdir(dcmLuaState *state, const char *dir)
 {
+    dcmContext *context = state->context;
     int ret = 1;
     int len;
     char *makeFilename = NULL;
     char *script;
+    char *srcPath = NULL;
+    char *dstPath = NULL;
 
-    dsPrintf(&makeFilename, "%s/Makefile.lua", dir);
+    dsCopy(&srcPath, dir);
+    dcmCanonicalizePath(&srcPath, dcmContextSrcPath(state->context));
+    dsCopy(&dstPath, dir);
+    dcmCanonicalizePath(&dstPath, dcmContextDstPath(state->context));
+    dsPrintf(&makeFilename, "Makefile.lua");
+    dcmCanonicalizePath(&makeFilename, srcPath);
+
     script = dcmFileAlloc(makeFilename, &len);
     if(script)
     {
+        daPushString(&context->srcPathStack, srcPath);
+        daPushString(&context->dstPathStack, dstPath);
         dcmLuaStateLoadScript(state, makeFilename, script, len);
         if(state->error)
         {
             fprintf(stderr, "ERROR: %s\n", state->error);
         }
         free(script);
+        daPopString(&context->srcPathStack);
+        daPopString(&context->dstPathStack);
     }
     else
     {
         ret = 0;
     }
     dsDestroy(&makeFilename);
+    dsDestroy(&srcPath);
+    dsDestroy(&dstPath);
     return ret;
+}
+
+// ---------------------------------------------------------------------------
+// Lua global functions
+
+static int unimplemented(lua_State *L)
+{
+    dcmVariant *variant = dcmLuaStateArgsToVariant(L->dcmstate);
+    printf("UNIMPLEMENTED func called. Args:\n");
+    dcmVariantPrint(variant, 1);
+    dcmVariantDestroy(variant);
+    return 0;
+}
+
+#define LUA_CONTEXT_DECLARE_STUB(NAME) { #NAME, unimplemented }
+#define LUA_CONTEXT_DECLARE_FUNC(NAME) { #NAME, LuaFunc_ ## NAME }
+#define LUA_CONTEXT_IMPLEMENT_FUNC(NAME, CONTEXTFUNC) \
+static int LuaFunc_ ## NAME (lua_State *L) \
+{ \
+    dcmLuaState *state = L->dcmstate; \
+    dcmVariant *args = dcmLuaStateArgsToVariant(state); \
+    CONTEXTFUNC(state->context, args); \
+    dcmVariantDestroy(args); \
+    return 0; \
+}
+
+LUA_CONTEXT_IMPLEMENT_FUNC(project,             dcmContextProject);
+LUA_CONTEXT_IMPLEMENT_FUNC(add_subdirectory,    dcmContextAddSubdirectory);
+LUA_CONTEXT_IMPLEMENT_FUNC(add_definitions,     dcmContextAddDefinitions);
+LUA_CONTEXT_IMPLEMENT_FUNC(include_directories, dcmContextIncludeDirectories);
+
+static const luaL_Reg dcmGlobalFuncs[] =
+{
+    LUA_CONTEXT_DECLARE_STUB(print),
+    LUA_CONTEXT_DECLARE_FUNC(project),
+    LUA_CONTEXT_DECLARE_FUNC(add_subdirectory),
+    LUA_CONTEXT_DECLARE_FUNC(add_definitions),
+    LUA_CONTEXT_DECLARE_FUNC(include_directories),
+    LUA_CONTEXT_DECLARE_FUNC(project),
+    {NULL, NULL}
+};
+
+static void dcmLuaStateRegisterGlobals(dcmLuaState *state)
+{
+    int isUNIX = 0;
+    int isWIN32 = 0;
+
+#ifdef __unix__
+    isUNIX = 1;
+#endif
+
+#ifdef WIN32
+    isWIN32 = 1;
+#endif
+
+    lua_pushglobaltable(state->L);
+    lua_pushglobaltable(state->L);
+    lua_setfield(state->L, -2, "_G");
+    luaL_setfuncs(state->L, dcmGlobalFuncs, 0);
+
+    lua_pushboolean(state->L, isUNIX);
+    lua_setfield(state->L, -2, "UNIX");
+    lua_pushboolean(state->L, isWIN32);
+    lua_setfield(state->L, -2, "WIN32");
 }

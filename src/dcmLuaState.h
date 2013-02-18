@@ -1,15 +1,17 @@
 #ifndef DCMLUASTATE_H
 #define DCMLUASTATE_H
 
-typedef struct lua_State lua_State;
+struct dcmContext;
+struct lua_State;
 
 typedef struct dcmLuaState
 {
-    lua_State *L;
+    struct lua_State *L;
+    struct dcmContext *context;
     char *error;
 } dcmLuaState;
 
-dcmLuaState *dcmLuaStateCreate();
+dcmLuaState *dcmLuaStateCreate(struct dcmContext *context);
 void dcmLuaStateDestroy(dcmLuaState *state);
 int dcmLuaStateError(dcmLuaState *state, const char *error);
 int dcmLuaStateLoadScript(dcmLuaState *state, const char *name, const char *script, int len);

@@ -27,5 +27,6 @@ typedef struct dcmVariant
 dcmVariant *dcmVariantCreate(int type);
 void dcmVariantDestroy(dcmVariant *arg);
 void dcmVariantClear(dcmVariant *arg);
+void dcmVariantPrint(dcmVariant *v, int depth); // for debugging
 
 #endif

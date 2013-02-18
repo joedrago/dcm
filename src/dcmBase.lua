@@ -1,11 +1,7 @@
-function project()
-    print("project called", {"a1", "a2", "a3"})
+function ddinclude_directories()
+    print("include_directories called", { e="eee", f="wat", g={complicated="structure"} })
 end
 
-function include_directories()
-    print("include_directories called", { e="eee" })
-end
-
-function add_subdirectory()
-    print("add_subdirectory called")
+function add_library(target, ...)
+    print("add_library called:", ...)
 end
