@@ -291,11 +291,12 @@ static int unimplemented(lua_State *L)
 #define LUA_CONTEXT_IMPLEMENT_FUNC(NAME, CONTEXTFUNC) \
 static int LuaFunc_ ## NAME (lua_State *L) \
 { \
+    int ret; \
     dcmLuaState *state = L->dcmstate; \
     dcmVariant *args = dcmLuaStateArgsToVariant(state); \
-    CONTEXTFUNC(state->context, args); \
+    ret = CONTEXTFUNC(state->context, args); \
     dcmVariantDestroy(args); \
-    return 0; \
+    return ret; \
 }
 
 LUA_CONTEXT_IMPLEMENT_FUNC(project,             dcmContextProject);
@@ -303,6 +304,8 @@ LUA_CONTEXT_IMPLEMENT_FUNC(add_subdirectory,    dcmContextAddSubdirectory);
 LUA_CONTEXT_IMPLEMENT_FUNC(add_definitions,     dcmContextAddDefinitions);
 LUA_CONTEXT_IMPLEMENT_FUNC(include_directories, dcmContextIncludeDirectories);
 LUA_CONTEXT_IMPLEMENT_FUNC(add_target,          dcmContextAddTarget);
+LUA_CONTEXT_IMPLEMENT_FUNC(rule,                dcmContextAddRule);
+LUA_CONTEXT_IMPLEMENT_FUNC(interp,              dcmContextInterp);
 
 static const luaL_Reg dcmGlobalFuncs[] =
 {
@@ -313,6 +316,8 @@ static const luaL_Reg dcmGlobalFuncs[] =
     LUA_CONTEXT_DECLARE_FUNC(include_directories),
     LUA_CONTEXT_DECLARE_FUNC(project),
     LUA_CONTEXT_DECLARE_FUNC(add_target),
+    LUA_CONTEXT_DECLARE_FUNC(rule),
+    LUA_CONTEXT_DECLARE_FUNC(interp),
     {NULL, NULL}
 };
 
@@ -338,4 +343,9 @@ static void dcmLuaStateRegisterGlobals(dcmLuaState *state)
     lua_setfield(state->L, -2, "UNIX");
     lua_pushboolean(state->L, isWIN32);
     lua_setfield(state->L, -2, "WIN32");
+}
+
+void dcmLuaStatePushString(dcmLuaState *state, const char *s)
+{
+    lua_pushstring(state->L, s);
 }

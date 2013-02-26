@@ -24,6 +24,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SOURCES
     src/dcmContext.c
     src/dcmLuaState.c
+    src/dcmSnapshotMap.c
     src/dcmUtil.c
     src/dcmVariant.c
     src/main.c

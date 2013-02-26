@@ -17,4 +17,6 @@ int dcmLuaStateError(dcmLuaState *state, const char *error);
 int dcmLuaStateLoadScript(dcmLuaState *state, const char *name, const char *script, int len);
 int dcmLuaStateAddSubdir(dcmLuaState *state, const char *dir);
 
+void dcmLuaStatePushString(dcmLuaState *state, const char *s);
+
 #endif

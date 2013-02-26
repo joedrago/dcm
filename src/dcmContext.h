@@ -3,6 +3,7 @@
 
 struct dcmLuaState;
 struct dcmVariant;
+struct dynMap;
 
 typedef struct dcmContext
 {
@@ -12,6 +13,8 @@ typedef struct dcmContext
 
     char **srcPathStack;
     char **dstPathStack;
+
+    struct dcmVariant *platforms;
 } dcmContext;
 
 dcmContext *dcmContextCreate();
@@ -21,10 +24,12 @@ const char *dcmContextSrcPath(dcmContext *context);
 const char *dcmContextDstPath(dcmContext *context);
 
 // Functions called by Lua
-void dcmContextProject(dcmContext *context, struct dcmVariant *args);
-void dcmContextAddSubdirectory(dcmContext *context, struct dcmVariant *args);
-void dcmContextAddDefinitions(dcmContext *context, struct dcmVariant *args);
-void dcmContextIncludeDirectories(dcmContext *context, struct dcmVariant *args);
-void dcmContextAddTarget(dcmContext *context, struct dcmVariant *args);
+int dcmContextProject(dcmContext *context, struct dcmVariant *args);
+int dcmContextAddSubdirectory(dcmContext *context, struct dcmVariant *args);
+int dcmContextAddDefinitions(dcmContext *context, struct dcmVariant *args);
+int dcmContextIncludeDirectories(dcmContext *context, struct dcmVariant *args);
+int dcmContextAddTarget(dcmContext *context, struct dcmVariant *args);
+int dcmContextAddRule(dcmContext *context, struct dcmVariant *args);
+int dcmContextInterp(dcmContext *context, struct dcmVariant *args);
 
 #endif
