@@ -217,14 +217,14 @@ function add_linked(rulename, absPath, target, ...)
         local src = dcm.canonicalize(s, DCM_CURRENT_SRC)
         local dst = interp("{BASENAME}.o", { path=src, root=DCM_CURRENT_DST })
         local flags = ""
-        add_target(DEFAULT_PLATFORM, "object", dst, dst, { src }, nil, nil, {
+        add_target(DCM_DEFAULT_PLATFORM, "object", dst, dst, { src }, nil, nil, {
             DEP_FILE = dst .. ".d",
             FLAGS = dcm.join(INCLUDES, " ", "-I") .. " " .. dcm.join(DEFINES, " ", "")
         })
         table.insert(objects, dst)
     end
     local dst = absPath
-    add_target(DEFAULT_PLATFORM, rulename, target, dst, objects, nil, nil, {
+    add_target(DCM_DEFAULT_PLATFORM, rulename, target, dst, objects, nil, nil, {
         LINK_FLAGS = dcm.join(LINK_FLAGS, " ", "")
     })
     if not phony[target] then
@@ -282,26 +282,26 @@ rule                  = dcm.rule
 ----------------------------------------------------------------------------------------
 -- Toolchain Defaults
 
-DEFAULT_PLATFORM = "default"
+DCM_DEFAULT_PLATFORM = "linux_gcc"
 
-rule("default", "dcm", {
+rule("linux_gcc", "dcm", {
     command = "cd " .. dcm.cwd .. " && "..dcm.cmd.." " .. dcm.join(dcm.args, " "),
     description = "Re-running DCM...",
     generator = "1",
 })
 
-rule("default", "object", {
+rule("linux_gcc", "object", {
     depfile = "$DEP_FILE",
     command = "/usr/bin/cc $DEFINES $FLAGS -MMD -MT $out -MF \"$DEP_FILE\" -o $out   -c $in",
     description = "Building C object $out"
 })
 
-rule("default", "library", {
+rule("linux_gcc", "library", {
     command = "rm -f $out && /usr/bin/ar cr $out $LINK_FLAGS $in",
     description = "Linking C static library $out"
 })
 
-rule("default", "executable", {
+rule("linux_gcc", "executable", {
     command = "/usr/bin/cc $FLAGS $LINK_FLAGS $in -o $out $LINK_PATH $LINK_LIBRARIES",
     description = "Linking C executable $out"
 })
@@ -335,168 +335,3 @@ dcm.add_subdirectory(".")
 
 -- generate!
 dcm.output()
-
-----------------------------------------------------------------------------------------
--- Makefile contents
-
---project "dyn"
---
---include_directories "src"
---
---if UNIX then
---    add_definitions "-g"
---end
---
---if WIN32 then
---    add_definitions "/wd4996"
---end
---
---add_subdirectory "src"
-
-
---math.sin(1);
---
-----dcm.interp();
---
---a = dcm.canonicalize("foo", "/home/joe");
---print("a: " .. a)
---if dcm.UNIX then
---    print("UNIX\n")
---end
---if dcm.WIN32 then
---    print("WIN32\n")
---end
---
---for i,v in ipairs(dcm.args) do
---    print("arg "..i..": "..v)
---end
---
---print("cwd: " .. dcm.cwd);
---
----- build src/CMakeFiles/dyn.dir/dynArray.c.o: C_COMPILER /home/joe/private/work/dyn/src/dynArray.c
-----   DEP_FILE = src/CMakeFiles/dyn.dir/dynArray.c.o.d
-----   FLAGS = -I/home/joe/private/work/dyn/src    -g
-----   OBJECT_DIR = src/CMakeFiles/dyn.dir
----- build src/CMakeFiles/dyn.dir/dynMap.c.o: C_COMPILER /home/joe/private/work/dyn/src/dynMap.c
-----   DEP_FILE = src/CMakeFiles/dyn.dir/dynMap.c.o.d
-----   FLAGS = -I/home/joe/private/work/dyn/src    -g
-----   OBJECT_DIR = src/CMakeFiles/dyn.dir
----- build src/CMakeFiles/dyn.dir/dynString.c.o: C_COMPILER /home/joe/private/work/dyn/src/dynString.c
-----   DEP_FILE = src/CMakeFiles/dyn.dir/dynString.c.o.d
-----   FLAGS = -I/home/joe/private/work/dyn/src    -g
-----   OBJECT_DIR = src/CMakeFiles/dyn.dir
----- 
----- # =============================================================================
----- # Link build statements for STATIC_LIBRARY target dyn
----- 
----- 
----- #############################################
----- # Link the static library src/libdyn.a
----- 
----- build src/libdyn.a: C_STATIC_LIBRARY_LINKER src/CMakeFiles/dyn.dir/dynArray.c.o src/CMakeFiles/dyn.dir/dynMap.c.o src/CMakeFiles/dyn.dir/dynString.c.o
-----   POSTdcmUILD = :
-----   PRE_LINK = :
-----   TARGET_PDB = dyn.a.dbg
---
---function add_library(target, ...)
---    sources = { ... }
---    for i,src in ipairs(sources) do
---        dst = interp("{BASENAME}.o", { path=src, root=DCM_CURRENTdcmINARY_DIR })
---        add_target(DEFAULT_PLATFORM, "object", dst, { src }, {})
---    end
-----    add_target(DEFAULT_PLATFORM, "library", target, { ... })
---end
---
--- stuff that needs to go in a toolchain file
-
---rule("default", "object", {
---    depfile = "$DEP_FILE",
---    command = "/usr/bin/cc $DEFINES $FLAGS -MMD -MT $out -MF \"$DEP_FILE\" -o $out   -c $in",
---    description = "Building C object $out"
---})
---
---rule("default", "library", {
---    command = "$PRE_LINK && /home/joe/private/work/cmake-2.8.10.2/bin/cmake -E remove $out && /usr/bin/ar cr $out $LINK_FLAGS $in && /usr/bin/ranlib $out && $POSTdcmUILD",
---    description = "Linking C static library $out"
---})
-
-DEFAULT_PLATFORM = "default"
-
--- rule CUSTOM_COMMAND
---   command = $COMMAND
---   description = $DESC
---   restat = 1
--- #############################################
--- # Rule for compiling C files.
--- 
--- rule C_COMPILER
---   depfile = $DEP_FILE
---   command = /usr/bin/cc  $DEFINES $FLAGS -MMD -MT $out -MF "$DEP_FILE" -o $out   -c $in
---   description = Building C object $out
--- 
--- 
--- #############################################
--- # Rule for linking C static library.
--- 
--- rule C_STATIC_LIBRARY_LINKER
---   command = $PRE_LINK && /home/joe/private/work/cmake-2.8.10.2/bin/cmake -E remove $out && /usr/bin/ar cr $out $LINK_FLAGS $in && /usr/bin/ranlib $out && $POSTdcmUILD
---   description = Linking C static library $out
--- 
--- 
--- #############################################
--- # Rule for linking C static library.
--- 
--- rule C_STATIC_LIBRARY_LINKER_RSP_FILE
---   command = $PRE_LINK && /home/joe/private/work/cmake-2.8.10.2/bin/cmake -E remove $out && /usr/bin/ar cr $out $LINK_FLAGS @$RSP_FILE && /usr/bin/ranlib $out && $POSTdcmUILD
---   description = Linking C static library $out
---   rspfile = $RSP_FILE
---   rspfile_content = $in  $LINK_PATH $LINK_LIBRARIES
--- 
--- 
--- #############################################
--- # Rule for linking C executable.
--- 
--- rule C_EXECUTABLE_LINKER
---   command = $PRE_LINK && /usr/bin/cc  $FLAGS  $LINK_FLAGS $in  -o $out $LINK_PATH $LINK_LIBRARIES && $POSTdcmUILD
---   description = Linking C executable $out
--- 
--- 
--- #############################################
--- # Rule for linking C executable.
--- 
--- rule C_EXECUTABLE_LINKER_RSP_FILE
---   command = $PRE_LINK && /usr/bin/cc  $FLAGS  $LINK_FLAGS @$RSP_FILE  -o $out  && $POSTdcmUILD
---   description = Linking C executable $out
---   rspfile = $RSP_FILE
---   rspfile_content = $in  $LINK_PATH $LINK_LIBRARIES
--- 
--- 
--- #############################################
--- # Rule for re-running cmake.
--- 
--- rule RERUN_CMAKE
---   command = /home/joe/private/work/cmake-2.8.10.2/bin/cmake -H/home/joe/private/work/dyn -B/home/joe/private/work/dynninja
---   description = Re-running CMake...
---   generator = 1
--- 
--- 
--- #############################################
--- # Rule for cleaning all built files.
--- 
--- rule CLEAN
---   command = /home/joe/bin/ninja -t clean
---   description = Cleaning all built files...
--- 
--- 
--- #############################################
--- # Rule for printing all primary targets available.
--- 
--- rule HELP
---   command = /home/joe/bin/ninja -t targets
---   description = All primary targets available:
--- 
-
-
-
-
-
