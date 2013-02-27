@@ -30,6 +30,7 @@ rules = {}
 builds = {}
 makefiles = {}
 phony = {}
+libpaths = {}
 
 function add_scoped(k, v)
     table.insert(scoped, k)
@@ -96,7 +97,7 @@ function join(t, sep, prefix)
 end
 
 function output()
-    add_target("default", "dcm", "build.ninja", {}, dcm.makefiles, nil, {})
+    add_target("default", "dcm", "build.ninja", "build.ninja", {}, dcm.makefiles, nil, {})
 
     local b = ""
 
@@ -106,8 +107,11 @@ function output()
             b = b .. "  " .. k .. " = " .. v .. "\n"
         end
     end
-    for i,v in ipairs(builds) do
-        b = b .. v
+    for name,build in pairs(builds) do
+        b = b .. build.header
+        for k,v in pairs(build.vars) do
+            b = b .. "    ".. k .. " = " .. tostring(v) .. "\n"
+        end
     end
 
     local all = "build all: phony"
@@ -175,58 +179,87 @@ function add_subdirectory(dir)
     dcm.popScope()
 end
 
-function add_target(platform, rule, dst, srcExplicit, srcImplicit, srcOrderOnly, vars)
-    local build = "\nbuild " .. dst ..  ": " .. platform .. "_" .. rule .. " "
+function add_target(platform, rule, target, dst, srcExplicit, srcImplicit, srcOrderOnly, vars)
+    local header = "\nbuild " .. dst ..  ": " .. platform .. "_" .. rule .. " "
     if srcExplicit then
         for i,v in ipairs(srcExplicit) do
-            build = build .. " " .. v
+            header = header .. " " .. v
         end
     end
     if srcImplicit then
-        build = build .. " | "
+        header = header .. " | "
         for i,v in ipairs(srcImplicit) do
-            build = build .. " " .. v
+            header = header .. " " .. v
         end
     end
     if srcOrderOnly then
-        build = build .. " || "
+        header = header .. " || "
         for i,v in ipairs(srcOrderOnly) do
-            build = build .. " " .. v
+            header = header .. " " .. v
         end
     end
-    build = build .. "\n"
-    for k,v in pairs(vars) do
-        build = build .. "    ".. k .. " = " .. tostring(v) .. "\n"
-    end
+    header = header .. "\n"
 
-    table.insert(dcm.builds, build)
+    dcm.builds[target] = { header=header, vars=vars }
 end
 
 function rule(platform, name, vars)
     dcm.rules[platform .. "_" .. name] = vars
 end
 
-function add_library(target, ...)
+function add_linked(rulename, absPath, target, ...)
     sources = { ... }
     objects = {}
+    if rulename == "library" then
+        libpaths[target] = DCM_CURRENT_DST
+    end
     for i,s in ipairs(sources) do
         local src = dcm.canonicalize(s, DCM_CURRENT_SRC)
         local dst = interp("{BASENAME}.o", { path=src, root=DCM_CURRENT_DST })
         local flags = ""
-        add_target(DEFAULT_PLATFORM, "object", dst, { src }, nil, nil, {
+        add_target(DEFAULT_PLATFORM, "object", dst, dst, { src }, nil, nil, {
             DEP_FILE = dst .. ".d",
             FLAGS = dcm.join(INCLUDES, " ", "-I") .. " " .. dcm.join(DEFINES, " ", "")
         })
         table.insert(objects, dst)
     end
-    local dst = dcm.canonicalize(target .. ".a", DCM_CURRENT_DST)
-    add_target(DEFAULT_PLATFORM, "library", dst, objects, nil, nil, {
+    local dst = absPath
+    add_target(DEFAULT_PLATFORM, rulename, target, dst, objects, nil, nil, {
         LINK_FLAGS = dcm.join(LINK_FLAGS, " ", "")
     })
     if not phony[target] then
         phony[target] = {}
     end
     table.insert(phony[target], dst)
+end
+
+function add_library(target, ...)
+    local dst = dcm.canonicalize("lib" .. target .. ".a", DCM_CURRENT_DST)
+    return add_linked("library", dst, target, ...)
+end
+
+function add_executable(target, ...)
+    local dst = dcm.canonicalize(target, DCM_CURRENT_DST)
+    return add_linked("executable", dst, target, ...)
+end
+
+function target_link_libraries(target, ...)
+    local dst = dcm.canonicalize(target .. "", DCM_CURRENT_DST)
+    if not builds[target] then
+        dcm.die("target_link_libraries(): no target '"..target.."'")
+    end
+
+    if not builds[target].vars.LINK_LIBRARIES then
+        builds[target].vars.LINK_LIBRARIES = ""
+    end
+
+    local libs = { ... }
+    for i,v in ipairs(libs) do
+        if libpaths[v] then
+            builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " -L" .. libpaths[v]
+        end
+        builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " -l" .. v
+    end
 end
 
 ----------------------------------------------------------------------------------------
@@ -237,12 +270,14 @@ setfenv(1, _G)
 ----------------------------------------------------------------------------------------
 -- Aliases
 
-add_definitions     = dcm.add_definitions
-remove_definitions  = dcm.remove_definitions
-include_directories = dcm.include_directories
-add_subdirectory    = dcm.add_subdirectory
-add_library         = dcm.add_library
-rule                = dcm.rule
+add_definitions       = dcm.add_definitions
+remove_definitions    = dcm.remove_definitions
+include_directories   = dcm.include_directories
+add_subdirectory      = dcm.add_subdirectory
+add_library           = dcm.add_library
+add_executable        = dcm.add_executable
+target_link_libraries = dcm.target_link_libraries
+rule                  = dcm.rule
 
 ----------------------------------------------------------------------------------------
 -- Toolchain Defaults
@@ -264,6 +299,11 @@ rule("default", "object", {
 rule("default", "library", {
     command = "rm -f $out && /usr/bin/ar cr $out $LINK_FLAGS $in",
     description = "Linking C static library $out"
+})
+
+rule("default", "executable", {
+    command = "/usr/bin/cc $FLAGS $LINK_FLAGS $in -o $out $LINK_PATH $LINK_LIBRARIES",
+    description = "Linking C executable $out"
 })
 
 ----------------------------------------------------------------------------------------
