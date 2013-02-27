@@ -3,6 +3,8 @@
 
 #include "dyn.h"
 
+struct lua_State;
+
 enum
 {
     V_NONE = 0, // 'n': nil / absent
@@ -28,5 +30,7 @@ dcmVariant *dcmVariantCreate(int type);
 void dcmVariantDestroy(dcmVariant *arg);
 void dcmVariantClear(dcmVariant *arg);
 void dcmVariantPrint(dcmVariant *v, int depth); // for debugging
+dcmVariant *dcmVariantFromArgs(struct lua_State *L);
+dcmVariant *dcmVariantFromIndex(struct lua_State *L, int index);
 
 #endif
