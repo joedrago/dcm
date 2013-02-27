@@ -28,7 +28,6 @@ set(SOURCES
     src/main.c
 )
 genHeader(SOURCES src/dcmBase.lua ${CMAKE_CURRENT_BINARY_DIR}/dcmBaseLua.h dcmBaseLua)
-genHeader(SOURCES src/dcmPrefix.lua ${CMAKE_CURRENT_BINARY_DIR}/dcmPrefixLua.h dcmPrefixLua)
 add_executable(dcm ${SOURCES})
 target_link_libraries(dcm dyn lua pcre)
 

@@ -1,7 +1,6 @@
 #include "dyn.h"
 #include "dcmVariant.h"
 #include "dcmBaseLua.h"
-#include "dcmPrefixLua.h"
 
 #include "lua.h"
 #include "lstate.h"
