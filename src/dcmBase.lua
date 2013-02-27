@@ -23,12 +23,13 @@ setfenv(1, dcm)
 
 -- Sets up what we're planning to scope
 scopes = { _G }
-scoped = {"INCLUDES", "DEFINES"}
+scoped = {}
 
 -- vars to store output information
 rules = {}
 builds = {}
 makefiles = {}
+phony = {}
 
 function add_scoped(k, v)
     table.insert(scoped, k)
@@ -108,6 +109,19 @@ function output()
     for i,v in ipairs(builds) do
         b = b .. v
     end
+
+    local all = "build all: phony"
+    for phonyname, phonylist in pairs(phony) do
+        b = b .. "\nbuild " .. phonyname .. ": phony"
+        for i,v in ipairs(phonylist) do
+            b = b .. " " .. v
+            all = all .. " " .. v
+        end
+        b = b .. "\n"
+    end
+
+    b = b .. all .. "\n\ndefault all\n"
+
     local filename = dcm.canonicalize("build.ninja", dcm.dstDir)
     print("Writing " .. filename)
     dcm.write(filename, b)
@@ -163,8 +177,10 @@ end
 
 function add_target(platform, rule, dst, srcExplicit, srcImplicit, srcOrderOnly, vars)
     local build = "\nbuild " .. dst ..  ": " .. platform .. "_" .. rule .. " "
-    for i,v in ipairs(srcExplicit) do
-        build = build .. " " .. v
+    if srcExplicit then
+        for i,v in ipairs(srcExplicit) do
+            build = build .. " " .. v
+        end
     end
     if srcImplicit then
         build = build .. " | "
@@ -192,6 +208,7 @@ end
 
 function add_library(target, ...)
     sources = { ... }
+    objects = {}
     for i,s in ipairs(sources) do
         local src = dcm.canonicalize(s, DCM_CURRENT_SRC)
         local dst = interp("{BASENAME}.o", { path=src, root=DCM_CURRENT_DST })
@@ -200,13 +217,16 @@ function add_library(target, ...)
             DEP_FILE = dst .. ".d",
             FLAGS = dcm.join(INCLUDES, " ", "-I") .. " " .. dcm.join(DEFINES, " ", "")
         })
-
----- build src/CMakeFiles/dyn.dir/dynArray.c.o: C_COMPILER /home/joe/private/work/dyn/src/dynArray.c
-----   DEP_FILE = src/CMakeFiles/dyn.dir/dynArray.c.o.d
-----   FLAGS = -I/home/joe/private/work/dyn/src    -g
-
+        table.insert(objects, dst)
     end
---    add_target(DEFAULT_PLATFORM, "library", target, { ... })
+    local dst = dcm.canonicalize(target .. ".a", DCM_CURRENT_DST)
+    add_target(DEFAULT_PLATFORM, "library", dst, objects, nil, nil, {
+        LINK_FLAGS = dcm.join(LINK_FLAGS, " ", "")
+    })
+    if not phony[target] then
+        phony[target] = {}
+    end
+    table.insert(phony[target], dst)
 end
 
 ----------------------------------------------------------------------------------------
@@ -241,6 +261,11 @@ rule("default", "object", {
     description = "Building C object $out"
 })
 
+rule("default", "library", {
+    command = "rm -f $out && /usr/bin/ar cr $out $LINK_FLAGS $in",
+    description = "Linking C static library $out"
+})
+
 ----------------------------------------------------------------------------------------
 -- Read Toolchain
 
@@ -263,6 +288,7 @@ DCM_CURRENT_SRC = dcm.srcDir
 DCM_CURRENT_DST = dcm.dstDir
 dcm.add_scoped("INCLUDES", {})
 dcm.add_scoped("DEFINES", {})
+dcm.add_scoped("LINK_FLAGS", {})
 
 -- read in the root Makefile
 dcm.add_subdirectory(".")
@@ -272,18 +298,6 @@ dcm.output()
 
 ----------------------------------------------------------------------------------------
 -- Makefile contents
-
-function t()
-    print("---")
-    print("DCM_CURRENT_SRC: " .. DCM_CURRENT_SRC)
-    print("DCM_CURRENT_DST: " .. DCM_CURRENT_DST)
-    for i,v in ipairs(INCLUDES) do
-        print("include: " .. v)
-    end
-    for i,v in ipairs(DEFINES) do
-        print("define: " .. v)
-    end
-end
 
 --project "dyn"
 --
