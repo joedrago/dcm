@@ -31,6 +31,8 @@ builds = {}
 makefiles = {}
 phony = {}
 libpaths = {}
+targets = {}
+platforms = {}
 
 function add_scoped(k, v)
     table.insert(scoped, k)
@@ -200,14 +202,39 @@ function add_target(platform, rule, target, dst, srcExplicit, srcImplicit, srcOr
     end
     header = header .. "\n"
 
+    if not targets[target] then
+        targets[target] = {}
+    end
+    targets[target].dst = dst
+    targets[target].platform = platform
+
     dcm.builds[target] = { header=header, vars=vars }
+end
+
+function platform(platform, vars)
+    if not dcm.platforms[platform] then
+        dcm.platforms[platform] = {}
+    end
+    for k,v in pairs(vars) do
+        dcm.platforms[platform][k] = v
+    end
+end
+
+function platformstring(platform, s)
+    if not dcm.platforms[platform] then
+        return ""
+    end
+    if not dcm.platforms[platform][s] then
+        return ""
+    end
+    return dcm.platforms[platform][s]
 end
 
 function rule(platform, name, vars)
     dcm.rules[platform .. "_" .. name] = vars
 end
 
-function add_linked(rulename, absPath, target, ...)
+function add_linked(platform, rulename, absPath, target, ...)
     sources = { ... }
     objects = {}
     if rulename == "library" then
@@ -215,16 +242,16 @@ function add_linked(rulename, absPath, target, ...)
     end
     for i,s in ipairs(sources) do
         local src = dcm.canonicalize(s, DCM_CURRENT_SRC)
-        local dst = interp("{BASENAME}.o", { path=src, root=DCM_CURRENT_DST })
+        local dst = interp(platformstring(platform, "object_prefix").."{BASENAME}"..platformstring(platform, "object_suffix"), { path=src, root=DCM_CURRENT_DST })
         local flags = ""
-        add_target(DCM_DEFAULT_PLATFORM, "object", dst, dst, { src }, nil, nil, {
+        add_target(platform, "object", dst, dst, { src }, nil, nil, {
             DEP_FILE = dst .. ".d",
-            FLAGS = dcm.join(INCLUDES, " ", "-I") .. " " .. dcm.join(DEFINES, " ", "")
+            FLAGS = dcm.join(INCLUDES, " ", platformstring(platform, "includepath_prefix")) .. " " .. dcm.join(DEFINES, " ", "")
         })
         table.insert(objects, dst)
     end
     local dst = absPath
-    add_target(DCM_DEFAULT_PLATFORM, rulename, target, dst, objects, nil, nil, {
+    add_target(platform, rulename, target, dst, objects, nil, nil, {
         LINK_FLAGS = dcm.join(LINK_FLAGS, " ", "")
     })
     if not phony[target] then
@@ -233,18 +260,27 @@ function add_linked(rulename, absPath, target, ...)
     table.insert(phony[target], dst)
 end
 
-function add_library(target, ...)
-    local dst = dcm.canonicalize("lib" .. target .. ".a", DCM_CURRENT_DST)
-    return add_linked("library", dst, target, ...)
+function add_platform_library(platform, target, ...)
+    local dst = dcm.canonicalize(platformstring(platform, "library_prefix") .. target .. platformstring(platform, "library_suffix"), DCM_CURRENT_DST)
+    return add_linked(platform, "library", dst, target, ...)
 end
 
-function add_executable(target, ...)
-    local dst = dcm.canonicalize(target, DCM_CURRENT_DST)
-    return add_linked("executable", dst, target, ...)
+function add_library(...)
+    add_platform_library(DCM_DEFAULT_PLATFORM, ...)
+end
+
+function add_platform_executable(platform, target, ...)
+    local dst = dcm.canonicalize(platformstring(platform, "executable_prefix") .. target .. platformstring(platform, "executable_suffix"), DCM_CURRENT_DST)
+    return add_linked(DCM_DEFAULT_PLATFORM, "executable", dst, target, ...)
+end
+
+function add_executable(...)
+    add_platform_executable(DCM_DEFAULT_PLATFORM, ...)
 end
 
 function target_link_libraries(target, ...)
-    local dst = dcm.canonicalize(target .. "", DCM_CURRENT_DST)
+    local platform = targets[target].platform
+    local dst = targets[target].dst
     if not builds[target] then
         dcm.die("target_link_libraries(): no target '"..target.."'")
     end
@@ -256,9 +292,9 @@ function target_link_libraries(target, ...)
     local libs = { ... }
     for i,v in ipairs(libs) do
         if libpaths[v] then
-            builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " -L" .. libpaths[v]
+            builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " " .. platformstring(platform, "linklibpath_prefix") .. libpaths[v]
         end
-        builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " -l" .. v
+        builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " " .. platformstring(platform, "linklib_prefix") .. v
     end
 end
 
@@ -278,13 +314,22 @@ add_library           = dcm.add_library
 add_executable        = dcm.add_executable
 target_link_libraries = dcm.target_link_libraries
 rule                  = dcm.rule
+platform              = dcm.platform
 
 ----------------------------------------------------------------------------------------
 -- Toolchain Defaults
 
-DCM_DEFAULT_PLATFORM = "linux_gcc"
+platform("linux_gcc", {
+    object_prefix      = "",
+    object_suffix      = ".o",
+    library_prefix     = "lib",
+    library_suffix     = ".a",
+    includepath_prefix = "-I",
+    linklib_prefix     = "-l",
+    linklibpath_prefix = "-L",
+})
 
-rule("linux_gcc", "dcm", {
+rule("default", "dcm", {
     command = "cd " .. dcm.cwd .. " && "..dcm.cmd.." " .. dcm.join(dcm.args, " "),
     description = "Re-running DCM...",
     generator = "1",
@@ -305,6 +350,8 @@ rule("linux_gcc", "executable", {
     command = "/usr/bin/cc $FLAGS $LINK_FLAGS $in -o $out $LINK_PATH $LINK_LIBRARIES",
     description = "Linking C executable $out"
 })
+
+DCM_DEFAULT_PLATFORM = "linux_gcc"
 
 ----------------------------------------------------------------------------------------
 -- Read Toolchain
