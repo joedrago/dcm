@@ -103,14 +103,37 @@ function output()
 
     local b = ""
 
-    for rulename,vars in pairs(rules) do
-        b = b .. "\nrule " .. rulename .. "\n"
-        for k,v in pairs(vars) do
-            b = b .. "  " .. k .. " = " .. v .. "\n"
+    for rulename,r in pairs(rules) do
+        if r.used then
+            b = b .. "\nrule " .. rulename .. "\n"
+            for k,v in pairs(r.vars) do
+                b = b .. "  " .. k .. " = " .. v .. "\n"
+            end
         end
     end
     for name,build in pairs(builds) do
-        b = b .. build.header
+        headerdst = string.gsub(build.dst, ":", "$:")
+
+        b = b .. "\nbuild " .. headerdst ..  ": " .. build.platform .. "_" .. build.rule .. " "
+        if build.srcExplicit then
+            for i,v in ipairs(build.srcExplicit) do
+                b = b .. " " .. string.gsub(v, ":", "$:")
+            end
+        end
+        if build.srcImplicit then
+            b = b .. " | "
+            for i,v in ipairs(build.srcImplicit) do
+                b = b .. " " .. string.gsub(v, ":", "$:")
+            end
+        end
+        if build.srcOrderOnly then
+            b = b .. " || "
+            for i,v in ipairs(build.srcOrderOnly) do
+                b = b .. " " .. string.gsub(v, ":", "$:")
+            end
+        end
+        b = b .. "\n"
+
         for k,v in pairs(build.vars) do
             b = b .. "    ".. k .. " = " .. tostring(v) .. "\n"
         end
@@ -120,8 +143,8 @@ function output()
     for phonyname, phonylist in pairs(phony) do
         b = b .. "\nbuild " .. phonyname .. ": phony"
         for i,v in ipairs(phonylist) do
-            b = b .. " " .. v
-            all = all .. " " .. v
+            b = b .. " " .. string.gsub(v, ":", "$:")
+            all = all .. " " .. string.gsub(v, ":", "$:")
         end
         b = b .. "\n"
     end
@@ -182,25 +205,7 @@ function add_subdirectory(dir)
 end
 
 function add_target(platform, rule, target, dst, srcExplicit, srcImplicit, srcOrderOnly, vars)
-    local header = "\nbuild " .. dst ..  ": " .. platform .. "_" .. rule .. " "
-    if srcExplicit then
-        for i,v in ipairs(srcExplicit) do
-            header = header .. " " .. v
-        end
-    end
-    if srcImplicit then
-        header = header .. " | "
-        for i,v in ipairs(srcImplicit) do
-            header = header .. " " .. v
-        end
-    end
-    if srcOrderOnly then
-        header = header .. " || "
-        for i,v in ipairs(srcOrderOnly) do
-            header = header .. " " .. v
-        end
-    end
-    header = header .. "\n"
+    use_rule(platform, rule)
 
     if not targets[target] then
         targets[target] = {}
@@ -208,7 +213,17 @@ function add_target(platform, rule, target, dst, srcExplicit, srcImplicit, srcOr
     targets[target].dst = dst
     targets[target].platform = platform
 
-    dcm.builds[target] = { header=header, vars=vars }
+    dcm.mkdir_for_file(dst)
+
+    dcm.builds[target] = {
+        dst=dst,
+        platform=platform,
+        rule=rule,
+        srcExplicit=srcExplicit,
+        srcImplicit=srcImplicit,
+        srcOrderOnly=srcOrderOnly,
+        vars=vars,
+    }
 end
 
 function platform(platform, vars)
@@ -231,7 +246,20 @@ function platformstring(platform, s)
 end
 
 function rule(platform, name, vars)
-    dcm.rules[platform .. "_" .. name] = vars
+    local rulename = platform .. "_" .. name
+    if not dcm.rules[rulename] then
+        dcm.rules[rulename] = { used=false }
+    end
+    dcm.rules[rulename].vars = vars
+end
+
+function use_rule(platform, name)
+    local rulename = platform .. "_" .. name
+    if dcm.rules[rulename] then
+        dcm.rules[rulename].used = true
+    else
+        dcm.error("No rule '"..name.."' on platform '"..platform.."'")
+    end
 end
 
 function add_linked(platform, rulename, absPath, target, ...)
@@ -239,6 +267,9 @@ function add_linked(platform, rulename, absPath, target, ...)
     objects = {}
     if rulename == "library" then
         libpaths[target] = DCM_CURRENT_DST
+    end
+    if dcm.rules[rulename] then
+        dcm.rules[rulename] = true
     end
     for i,s in ipairs(sources) do
         local src = dcm.canonicalize(s, DCM_CURRENT_SRC)
@@ -288,13 +319,19 @@ function target_link_libraries(target, ...)
     if not builds[target].vars.LINK_LIBRARIES then
         builds[target].vars.LINK_LIBRARIES = ""
     end
+    if not builds[target].srcImplicit then
+        builds[target].srcImplicit = {}
+    end
 
     local libs = { ... }
     for i,v in ipairs(libs) do
+        if targets[v] and targets[v].dst then
+            table.insert(builds[target].srcImplicit, targets[v].dst)
+        end
         if libpaths[v] then
             builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " " .. platformstring(platform, "linklibpath_prefix") .. libpaths[v]
         end
-        builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " " .. platformstring(platform, "linklib_prefix") .. v
+        builds[target].vars.LINK_LIBRARIES = builds[target].vars.LINK_LIBRARIES .. " " .. platformstring(platform, "linklib_prefix") .. v .. platformstring(platform, "linklib_suffix")
     end
 end
 
@@ -317,7 +354,7 @@ rule                  = dcm.rule
 platform              = dcm.platform
 
 ----------------------------------------------------------------------------------------
--- Toolchain Defaults
+-- Linux Toolchain Defaults
 
 platform("linux_gcc", {
     object_prefix      = "",
@@ -326,13 +363,10 @@ platform("linux_gcc", {
     library_suffix     = ".a",
     includepath_prefix = "-I",
     linklib_prefix     = "-l",
+    linklib_suffix     = "",
     linklibpath_prefix = "-L",
-})
-
-rule("default", "dcm", {
-    command = "cd " .. dcm.cwd .. " && "..dcm.cmd.." " .. dcm.join(dcm.args, " "),
-    description = "Re-running DCM...",
-    generator = "1",
+    executable_prefix  = "",
+    executable_suffix  = "",
 })
 
 rule("linux_gcc", "object", {
@@ -351,7 +385,55 @@ rule("linux_gcc", "executable", {
     description = "Linking C executable $out"
 })
 
-DCM_DEFAULT_PLATFORM = "linux_gcc"
+----------------------------------------------------------------------------------------
+-- Windows Toolchain Defaults
+
+platform("win32_cl", {
+    object_prefix      = "",
+    object_suffix      = ".obj",
+    library_prefix     = "",
+    library_suffix     = ".lib",
+    includepath_prefix = "-I",
+    linklib_prefix     = "",
+    linklib_suffix     = ".lib",
+    linklibpath_prefix = "/LIBPATH:",
+    executable_prefix  = "",
+    executable_suffix  = ".exe",
+})
+
+rule("win32_cl", "object", {
+    command = "cl.exe /D \"WIN32\" /FD /EHsc /MT /Gy /W3 /Zi /TC /c $DEFINES $FLAGS $in /Fo$out /nologo /errorReport:prompt",
+    description = "Building C object $out"
+})
+
+rule("win32_cl", "library", {
+    command = "lib.exe /nologo /OUT:$out $LINK_FLAGS $in",
+    description = "Linking C static library $out"
+})
+
+rule("win32_cl", "executable", {
+    command = "link.exe /OUT:$out /nologo $LINK_PATH $LINK_LIBRARIES $in",
+    description = "Linking C executable $out"
+})
+
+----------------------------------------------------------------------------------------
+-- Generator rules
+
+rule("default", "dcm", {
+    command = "cd " .. dcm.cwd .. " && "..dcm.cmd.." " .. dcm.join(dcm.args, " "),
+    description = "Re-running DCM...",
+    generator = "1",
+})
+dcm.use_rule("default", "dcm") -- always used/generated
+
+----------------------------------------------------------------------------------------
+-- Guess platform
+
+if dcm.win32 then
+    DCM_DEFAULT_PLATFORM = "win32_cl"
+else
+    DCM_DEFAULT_PLATFORM = "linux_gcc"
+end
 
 ----------------------------------------------------------------------------------------
 -- Read Toolchain

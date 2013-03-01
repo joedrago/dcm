@@ -7,10 +7,62 @@
 #include "lualib.h"
 #include "lauxlib.h"
 
-#include <unistd.h> // for getcwd()
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+
+#ifdef WIN32
+#include <windows.h> // for GetCurrentDirectory()
+#else
+#include <unistd.h> // for getcwd()
+#endif
+
+// ---------------------------------------------------------------------------
+// Path helpers
+
+const char *dcmWorkingDir()
+{
+#ifdef WIN32
+    static char currentDir[MAX_PATH];
+    GetCurrentDirectory(MAX_PATH, currentDir);
+    return currentDir;
+#else
+    char cwd[512];
+    return getcwd(cwd, 512);
+#endif
+}
+
+int dcmDirExists(const char *path)
+{
+    int ret = 0;
+
+#ifdef WIN32
+    DWORD dwAttrib = GetFileAttributes(path);
+    if(dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        ret = 1;
+    }
+#else
+#error fix this
+#endif
+
+    return ret;
+}
+
+void dcmMkdir(const char *path)
+{
+    if(!dcmDirExists(path))
+    {
+        printf("Creating directory: %s\n", path);
+
+#ifdef WIN32
+        CreateDirectory(path, NULL);
+#else
+#error fix this
+#endif
+
+    }
+}
 
 // ---------------------------------------------------------------------------
 // File reading
@@ -72,10 +124,11 @@ static const char *dcmLoadScriptReader(lua_State *L, void *data, size_t *size)
 
 static int dcmLoadScript(lua_State *L, const char *name, const char *script, int len)
 {
+    int err;
     struct dcmScriptInfo info;
     info.script = script;
     info.len = len;
-    int err = lua_load(L, dcmLoadScriptReader, &info, name);
+    err = lua_load(L, dcmLoadScriptReader, &info, name);
     if(err == 0)
     {
         err = lua_pcall(L, 0, LUA_MULTRET, 0);
@@ -101,16 +154,6 @@ static int dcmLoadScript(lua_State *L, const char *name, const char *script, int
 
 // ---------------------------------------------------------------------------
 
-static int isAbsolutePath(const char *s)
-{
-    if(s[0] == '/')
-    {
-        // dumb, unix specific way for now
-        return 1;
-    }
-    return 0;
-}
-
 #ifdef WIN32
 #define PROPER_SLASH '\\'
 #define PROPER_CURRENT "\\."
@@ -120,6 +163,25 @@ static int isAbsolutePath(const char *s)
 #define PROPER_CURRENT "/."
 #define PROPER_PARENT "/.."
 #endif
+
+static int isAbsolutePath(const char *s)
+{
+#ifdef WIN32
+    if((strlen(s) >= 3) && (s[1] == ':') && (s[2] == PROPER_SLASH))
+    {
+        char driveLetter = tolower(s[0]);
+        if((driveLetter >= 'a') && (driveLetter <= 'z'))
+        {
+            return 1;
+        }
+    }
+#endif
+    if(s[0] == PROPER_SLASH)
+    {
+        return 1;
+    }
+    return 0;
+}
 
 static void dsCleanupSlashes(char **ds)
 {
@@ -433,6 +495,35 @@ int dcm_write(lua_State *L, struct dcmVariant *args)
     return 1;
 }
 
+int dcm_mkdir_for_file(lua_State *L, struct dcmVariant *args)
+{
+    const char *path = args->a[0]->s;
+    char *dirpath = NULL;
+    char *slashLoc1;
+    char *slashLoc2;
+    dsCopy(&dirpath, path);
+    slashLoc1 = strrchr(dirpath, '/');
+    slashLoc2 = strrchr(dirpath, '\\');
+    if(!slashLoc1)
+    {
+        slashLoc1 = slashLoc2;
+    }
+    if(slashLoc2)
+    {
+        if(slashLoc1 < slashLoc2)
+        {
+            slashLoc1 = slashLoc2;
+        }
+    }
+    if(slashLoc1)
+    {
+        *slashLoc1 = 0;
+        dcmMkdir(dirpath);
+    }
+    dsDestroy(&dirpath);
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // Lua dcm function hooks
 
@@ -462,6 +553,7 @@ LUA_CONTEXT_IMPLEMENT_FUNC(canonicalize, dcm_canonicalize);
 LUA_CONTEXT_IMPLEMENT_FUNC(die, dcm_die);
 LUA_CONTEXT_IMPLEMENT_FUNC(read, dcm_read);
 LUA_CONTEXT_IMPLEMENT_FUNC(write, dcm_write);
+LUA_CONTEXT_IMPLEMENT_FUNC(mkdir_for_file, dcm_mkdir_for_file);
 
 static const luaL_Reg dcmFuncs[] =
 {
@@ -470,6 +562,7 @@ static const luaL_Reg dcmFuncs[] =
     LUA_CONTEXT_DECLARE_FUNC(die),
     LUA_CONTEXT_DECLARE_FUNC(read),
     LUA_CONTEXT_DECLARE_FUNC(write),
+    LUA_CONTEXT_DECLARE_FUNC(mkdir_for_file),
     {NULL, NULL}
 };
 
@@ -477,7 +570,6 @@ static void dcmPrepareLua(lua_State *L, int argc, char **argv)
 {
     int isUNIX = 0;
     int isWIN32 = 0;
-    char cwd[512];
 
 #ifdef __unix__
     isUNIX = 1;
@@ -495,7 +587,7 @@ static void dcmPrepareLua(lua_State *L, int argc, char **argv)
     lua_setfield(L, -2, "unix");
     lua_pushboolean(L, isWIN32);
     lua_setfield(L, -2, "win32");
-    lua_pushstring(L, getcwd(cwd, 512));
+    lua_pushstring(L, dcmWorkingDir());
     lua_setfield(L, -2, "cwd");
     lua_pushstring(L, argv[0]);
     lua_setfield(L, -2, "cmd");
