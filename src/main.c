@@ -12,9 +12,12 @@
 #include <stdio.h>
 
 #ifdef WIN32
-#include <windows.h> // for GetCurrentDirectory()
+#include <windows.h>   // for GetCurrentDirectory()
 #else
-#include <unistd.h> // for getcwd()
+#include <unistd.h>    // for getcwd()
+#include <sys/types.h> // for S_* defines
+#include <sys/stat.h>  // for mkdir()
+#include <dirent.h>    // for opendir()
 #endif
 
 // ---------------------------------------------------------------------------
@@ -27,7 +30,7 @@ const char *dcmWorkingDir()
     GetCurrentDirectory(MAX_PATH, currentDir);
     return currentDir;
 #else
-    char cwd[512];
+    static char cwd[512];
     return getcwd(cwd, 512);
 #endif
 }
@@ -43,7 +46,12 @@ int dcmDirExists(const char *path)
         ret = 1;
     }
 #else
-#error fix this
+    DIR *p = opendir(path);
+    if(p != NULL)
+    {
+        ret = 1;
+        closedir(p);
+    }
 #endif
 
     return ret;
@@ -58,7 +66,7 @@ void dcmMkdir(const char *path)
 #ifdef WIN32
         CreateDirectory(path, NULL);
 #else
-#error fix this
+        mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 #endif
 
     }
