@@ -1,54 +1,25 @@
 //----------------------------------------------------------------------------------------
-//-- Basic argument checking / parsing
+// Basic argument checking / parsing
 
-if(dcm.win32)
+if(length(dcm.args) < 2)
 {
-    print("Win32!\n");
+    dcm.die("dcm requires a source dir and a destination dir!");
 }
 
-if(dcm.unix)
+var srcDir = dcm.canonicalize(dcm.args[0], dcm.cwd);
+var dstDir = dcm.canonicalize(dcm.args[1], dcm.cwd);
+
+var toolchain = null;
+if(length(dcm.args) > 2)
 {
-    print("Unix!\n");
+    toolchain = dcm.canonicalize(dcm.args[2], dcm.cwd);
 }
 
-print("Working dir: %s\n" % dcm.cwd);
-var p = dcm.canonicalize("derp", dcm.cwd);
-print("canonicalized cwd: %s\n" % p);
-
-var dst = dcm.interp("{BASENAME}", { path => "derp", root => dcm.cwd });
-print("dst: %s\n" % dst);
-
-print("Args:\n");
-for(v,i in dcm.args)
-{
-    print("%d: %s\n" % (i, v));
-}
-
-//if #dcm.args < 2 then
-//    dcm.die("dcm requires a source dir and a destination dir!")
-//end
+// Sets up what we're planning to scope
+var scopes = [];
+var scoped = {};
 //
-//srcDir = dcm.canonicalize(dcm.args[1], dcm.cwd)
-//dstDir = dcm.canonicalize(dcm.args[2], dcm.cwd)
-//
-//toolchain = nil
-//if #dcm.args > 2 then
-//    toolchain = dcm.canonicalize(dcm.args[3], dcm.cwd)
-//end
-//
-//----------------------------------------------------------------------------------------
-//-- Wrap the global environment with dcm while we execute dcmBase, so that
-//-- the Makefile scripting environment only has the globals that were explicitly added.
-//
-//local _G = _G
-//setmetatable(dcm, { __index = _G })
-//setfenv(1, dcm)
-//
-//-- Sets up what we're planning to scope
-//scopes = { _G }
-//scoped = {}
-//
-//-- vars to store output information
+// vars to store output information
 //rules = {}
 //builds = {}
 //makefiles = {}
