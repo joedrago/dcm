@@ -29,7 +29,7 @@ void genHeader(FILE *inputFile, FILE *outputFile, const char *baseName)
         if((i % 15) == 14)
             fprintf(outputFile, "\n");
     }
-    fprintf(outputFile, "\n};\n");
+    fprintf(outputFile, ", 0\n};\n");
     free(bytes);
 }
 

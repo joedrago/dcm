@@ -1,3 +1,6 @@
 [submodule "ext/dyn"]
 	path = ext/dyn
 	url = https://github.com/joedrago/dyn.git
+[submodule "ext/eureka"]
+	path = ext/eureka
+	url = https://github.com/joedrago/eureka

@@ -1,11 +1,8 @@
 #include "dyn.h"
 #include "dcmVariant.h"
-#include "dcmBaseLua.h"
+#include "dcmBaseEk.h"
 
-#include "lua.h"
-#include "lstate.h"
-#include "lualib.h"
-#include "lauxlib.h"
+#include "ek.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -72,6 +69,7 @@ void dcmMkdir(const char *path)
     }
 }
 
+
 // ---------------------------------------------------------------------------
 // File reading
 
@@ -107,57 +105,6 @@ char *dcmFileAlloc(const char *filename, int *outputLen)
     fclose(f);
     *outputLen = len;
     return data;
-}
-
-// ---------------------------------------------------------------------------
-// Script loading
-
-struct dcmScriptInfo
-{
-    const char *script;
-    int len;
-};
-
-static const char *dcmLoadScriptReader(lua_State *L, void *data, size_t *size)
-{
-    struct dcmScriptInfo *info = (struct dcmScriptInfo *)data;
-    if(info->script && info->len)
-    {
-        *size = info->len;
-        info->len = 0;
-        return info->script;
-    }
-    return NULL;
-}
-
-static int dcmLoadScript(lua_State *L, const char *name, const char *script, int len)
-{
-    int err;
-    struct dcmScriptInfo info;
-    info.script = script;
-    info.len = len;
-    err = lua_load(L, dcmLoadScriptReader, &info, name);
-    if(err == 0)
-    {
-        err = lua_pcall(L, 0, LUA_MULTRET, 0);
-        if(err == 0)
-        {
-            return 1;
-        }
-        else
-        {
-            // failed to run chunk
-            printf("ERROR: %s\n", lua_tostring(L, -1));
-            lua_pop(L, 1);
-        }
-    }
-    else
-    {
-        // failed to load chunk
-        printf("ERROR: %s\n", lua_tostring(L, -1));
-        lua_pop(L, 1);
-    }
-    return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -376,206 +323,241 @@ static const char * product(dynMap *vars, const char *in, char **out, char end)
 }
 
 // ---------------------------------------------------------------------------
-// Lua dcm functions
+// Eureka dcm functions
 
-int dcm_canonicalize(lua_State *L, struct dcmVariant *args)
+static ekU32 dcm_canonicalize(struct ekContext *E, ekU32 argCount)
 {
     char *temp = NULL;
-    dsCopy(&temp, args->a[0]->s);
-    dcmCanonicalizePath(&temp, args->a[1]->s);
-    lua_pushstring(L, temp);
+
+    ekValue *path = NULL;
+    ekValue *root = NULL;
+    if(!ekContextGetArgs(E, argCount, "ss", &path, &root))
+    {
+        return ekContextArgsFailure(E, argCount, "dcm.canonicalize([string] path, [string] root)");
+    }
+
+    dsCopy(&temp, ekStringSafePtr(&path->stringVal));
+    dcmCanonicalizePath(&temp, ekStringSafePtr(&root->stringVal));
+    ekContextPushValue(E, ekValueCreateString(E, temp));
     dsDestroy(&temp);
+
+    ekValueRemoveRef(E, path);
+    ekValueRemoveRef(E, root);
     return 1;
 }
 
-int dcm_interp(lua_State *L, struct dcmVariant *args)
-{
-    // TODO: error checking of any kind
-    const char *template = args->a[0]->s;
-    char *out = NULL;
-    char *basename = NULL;
-    dynMap *argMap = args->a[1]->m;
-    dynMap *vars = dmCreate(DKF_STRING, 0);
 
-    if(dmHasS(argMap, "path"))
+static ekU32 dcm_interp(struct ekContext *E, ekU32 argCount)
+{
+    ekValue *templateVal = NULL;
+    ekValue *args = NULL;
+    if(!ekContextGetArgs(E, argCount, "sm", &templateVal, &args))
     {
-        dcmVariant *variant = dmGetS2P(argMap, "path");
-        const char *path = variant->s;
-        if(path)
+        return ekContextArgsFailure(E, argCount, "dcm.interp([string] template, [map] args)");
+    }
+    else
+    {
+        // TODO: error checking of any kind
+        const char *template = ekStringSafePtr(&templateVal->stringVal);
+        char *out = NULL;
+        char *basename = NULL;
+        dynMap *vars = dmCreate(DKF_STRING, 0);
+
+        if(ekObjectGetRef(E, args->objectVal, "path", ekFalse))
         {
-            char *dotLoc;
-            char *slashLoc1;
-            char *slashLoc2;
-            char *basenameLoc;
-            dsCopy(&basename, path);
-            dotLoc = strrchr(basename, '.');
-            slashLoc1 = strrchr(basename, '/');
-            slashLoc2 = strrchr(basename, '\\');
-            if(!slashLoc1)
+            ekValue **ref = ekObjectGetRef(E, args->objectVal, "path", ekFalse);
+            const char *path = ekStringSafePtr(&((*ref)->stringVal));
+            if(path)
             {
-                slashLoc1 = slashLoc2;
-            }
-            if(slashLoc2)
-            {
-                if(slashLoc1 < slashLoc2)
+                char *dotLoc;
+                char *slashLoc1;
+                char *slashLoc2;
+                char *basenameLoc;
+                dsCopy(&basename, path);
+                dotLoc = strrchr(basename, '.');
+                slashLoc1 = strrchr(basename, '/');
+                slashLoc2 = strrchr(basename, '\\');
+                if(!slashLoc1)
                 {
                     slashLoc1 = slashLoc2;
                 }
+                if(slashLoc2)
+                {
+                    if(slashLoc1 < slashLoc2)
+                    {
+                        slashLoc1 = slashLoc2;
+                    }
+                }
+                if(dotLoc)
+                {
+                    *dotLoc = 0;
+                }
+                if(slashLoc1)
+                {
+                    basenameLoc = slashLoc1 + 1;
+                }
+                else
+                {
+                    basenameLoc = basename;
+                }
+                dmGetS2P(vars, "BASENAME") = basenameLoc;
             }
-            if(dotLoc)
-            {
-                *dotLoc = 0;
-            }
-            if(slashLoc1)
-            {
-                basenameLoc = slashLoc1 + 1;
-            }
-            else
-            {
-                basenameLoc = basename;
-            }
-            dmGetS2P(vars, "BASENAME") = basenameLoc;
         }
-    }
 
-    product(vars, template, &out, 0);
+        product(vars, template, &out, 0);
 
-    if(dmHasS(argMap, "root"))
-    {
-        dcmVariant *variant = dmGetS2P(argMap, "root");
-        const char *root = variant->s;
-        if(root)
+        if(ekObjectGetRef(E, args->objectVal, "root", ekFalse))
         {
-            dcmCanonicalizePath(&out, root);
+            ekValue **ref = ekObjectGetRef(E, args->objectVal, "root", ekFalse);
+            const char *root = ekStringSafePtr(&((*ref)->stringVal));
+            if(root)
+            {
+                dcmCanonicalizePath(&out, root);
+            }
         }
-    }
 
-    lua_pushstring(L, out);
-    dsDestroy(&out);
-    dsDestroy(&basename);
+        ekContextPushValue(E, ekValueCreateString(E, out));
+
+        dsDestroy(&out);
+        dsDestroy(&basename);
+        ekValueRemoveRef(E, templateVal);
+        ekValueRemoveRef(E, args);
+    }
     return 1;
 }
 
-int dcm_die(lua_State *L, struct dcmVariant *args)
+static ekU32 dcm_die(struct ekContext *E, ekU32 argCount)
 {
     const char *error = "<unknown>";
-    if(args->a[0]->s)
+    ekValue *s = NULL;
+    if(!ekContextGetArgs(E, argCount, "|s", &s))
     {
-        error = args->a[0]->s;
+        return ekContextArgsFailure(E, argCount, "dcm.die([string] reason)");
     }
-    luaL_error(L, error);
+
+    if(s)
+    {
+        error = ekStringSafePtr(&s->stringVal);
+    }
+
+    printf("dcm.die: %s\n", error);
     exit(-1);
+
+    if(s)
+    {
+        ekValueRemoveRef(E, s);
+    }
     return 0;
 }
 
-int dcm_read(lua_State *L, struct dcmVariant *args)
+static ekU32 dcm_read(struct ekContext *E, ekU32 argCount)
 {
-    int ret = 0;
+    ekValue *filename = NULL;
+    int pushed = 0;
     int len = 0;
-    char *text = dcmFileAlloc(args->a[0]->s, &len);
+    char *text = NULL;
+    if(!ekContextGetArgs(E, argCount, "s", &filename))
+    {
+        return ekContextArgsFailure(E, argCount, "dcm.read([string] filename)");
+    }
+
+    text = dcmFileAlloc(ekStringSafePtr(&filename->stringVal), &len);
     if(text)
     {
         if(len)
         {
-            lua_pushstring(L, text);
-            ++ret;
+            ekContextPushValue(E, ekValueCreateString(E, text));
+            pushed = 1;
         }
         free(text);
     }
-    return ret;
+    if(!pushed)
+    {
+        ekContextPushValue(E, &ekValueNull);
+    }
+    ekValueRemoveRef(E, filename);
+    return 1;
 }
 
-int dcm_write(lua_State *L, struct dcmVariant *args)
+static ekU32 dcm_write(struct ekContext *E, ekU32 argCount)
 {
+    ekValue *filename = NULL;
+    ekValue *textVal = NULL;
+    int len = 0;
+    FILE *f;
     char *err = NULL;
-    const char *filename = args->a[0]->s;
-    const char *text = args->a[1]->s;
-    FILE *f = fopen(filename, "wb");
+    const char *text;
+    if(!ekContextGetArgs(E, argCount, "ss", &filename, &textVal))
+    {
+        return ekContextArgsFailure(E, argCount, "dcm.write([string] filename, [string] text)");
+    }
+
     dsCopy(&err, "");
+    text = ekStringSafePtr(&textVal->stringVal);
+
+    f = fopen(ekStringSafePtr(&filename->stringVal), "wb");
     if(f)
     {
         int len = strlen(text);
         fwrite(text, 1, len, f);
         fclose(f);
     }
-    lua_pushstring(L, err);
+
+    ekContextPushValue(E, ekValueCreateString(E, err));
+
     dsDestroy(&err);
+    ekValueRemoveRef(E, filename);
+    ekValueRemoveRef(E, textVal);
     return 1;
 }
 
-int dcm_mkdir_for_file(lua_State *L, struct dcmVariant *args)
+static ekU32 dcm_mkdir_for_file(struct ekContext *E, ekU32 argCount)
 {
-    const char *path = args->a[0]->s;
-    char *dirpath = NULL;
-    char *slashLoc1;
-    char *slashLoc2;
-    dsCopy(&dirpath, path);
-    slashLoc1 = strrchr(dirpath, '/');
-    slashLoc2 = strrchr(dirpath, '\\');
-    if(!slashLoc1)
+    ekValue *filename = NULL;
+    if(!ekContextGetArgs(E, argCount, "s", &filename))
     {
-        slashLoc1 = slashLoc2;
+        return ekContextArgsFailure(E, argCount, "dcm.read([string] filename)");
     }
-    if(slashLoc2)
+    else
     {
-        if(slashLoc1 < slashLoc2)
+        const char *path = ekStringSafePtr(&filename->stringVal);
+        char *dirpath = NULL;
+        char *slashLoc1;
+        char *slashLoc2;
+        dsCopy(&dirpath, path);
+        slashLoc1 = strrchr(dirpath, '/');
+        slashLoc2 = strrchr(dirpath, '\\');
+        if(!slashLoc1)
         {
             slashLoc1 = slashLoc2;
         }
+        if(slashLoc2)
+        {
+            if(slashLoc1 < slashLoc2)
+            {
+                slashLoc1 = slashLoc2;
+            }
+        }
+        if(slashLoc1)
+        {
+            *slashLoc1 = 0;
+            dcmMkdir(dirpath);
+        }
+        dsDestroy(&dirpath);
+
+        ekValueRemoveRef(E, filename);
     }
-    if(slashLoc1)
-    {
-        *slashLoc1 = 0;
-        dcmMkdir(dirpath);
-    }
-    dsDestroy(&dirpath);
     return 0;
 }
 
 // ---------------------------------------------------------------------------
 // Lua dcm function hooks
 
-static int unimplemented(lua_State *L)
+static void dcmPrepare(ekContext *E, int argc, char **argv)
 {
-    dcmVariant *variant = dcmVariantFromArgs(L);
-    printf("UNIMPLEMENTED func called. Args:\n");
-    dcmVariantPrint(variant, 1);
-    dcmVariantDestroy(variant);
-    return 0;
-}
-
-#define LUA_CONTEXT_DECLARE_STUB(NAME) { #NAME, unimplemented }
-#define LUA_CONTEXT_DECLARE_FUNC(NAME) { #NAME, LuaFunc_ ## NAME }
-#define LUA_CONTEXT_IMPLEMENT_FUNC(NAME, CONTEXTFUNC) \
-static int LuaFunc_ ## NAME (lua_State *L) \
-{ \
-    int ret; \
-    dcmVariant *args = dcmVariantFromArgs(L); \
-    ret = CONTEXTFUNC(L, args); \
-    dcmVariantDestroy(args); \
-    return ret; \
-}
-
-LUA_CONTEXT_IMPLEMENT_FUNC(interp, dcm_interp);
-LUA_CONTEXT_IMPLEMENT_FUNC(canonicalize, dcm_canonicalize);
-LUA_CONTEXT_IMPLEMENT_FUNC(die, dcm_die);
-LUA_CONTEXT_IMPLEMENT_FUNC(read, dcm_read);
-LUA_CONTEXT_IMPLEMENT_FUNC(write, dcm_write);
-LUA_CONTEXT_IMPLEMENT_FUNC(mkdir_for_file, dcm_mkdir_for_file);
-
-static const luaL_Reg dcmFuncs[] =
-{
-    LUA_CONTEXT_DECLARE_FUNC(interp),
-    LUA_CONTEXT_DECLARE_FUNC(canonicalize),
-    LUA_CONTEXT_DECLARE_FUNC(die),
-    LUA_CONTEXT_DECLARE_FUNC(read),
-    LUA_CONTEXT_DECLARE_FUNC(write),
-    LUA_CONTEXT_DECLARE_FUNC(mkdir_for_file),
-    {NULL, NULL}
-};
-
-static void dcmPrepareLua(lua_State *L, int argc, char **argv)
-{
+    ekValue *dcm;
+    ekValue *v;
+    char *error = NULL;
     int isUNIX = 0;
     int isWIN32 = 0;
 
@@ -587,41 +569,55 @@ static void dcmPrepareLua(lua_State *L, int argc, char **argv)
     isWIN32 = 1;
 #endif
 
-    luaL_openlibs(L);
+    dcm = ekValueCreateObject(E, NULL, 0, ekFalse);
 
-    luaL_register(L, "dcm", dcmFuncs);
+    // variables
+    ekValueObjectSetMember(E, dcm, "unix", ekValueCreateInt(E, isUNIX));
+    ekValueObjectSetMember(E, dcm, "win32", ekValueCreateInt(E, isWIN32));
+    ekValueObjectSetMember(E, dcm, "cwd", ekValueCreateString(E, dcmWorkingDir()));
+    ekValueObjectSetMember(E, dcm, "cmd", ekValueCreateString(E, argv[0]));
 
-    lua_pushboolean(L, isUNIX);
-    lua_setfield(L, -2, "unix");
-    lua_pushboolean(L, isWIN32);
-    lua_setfield(L, -2, "win32");
-    lua_pushstring(L, dcmWorkingDir());
-    lua_setfield(L, -2, "cwd");
-    lua_pushstring(L, argv[0]);
-    lua_setfield(L, -2, "cmd");
+    // functions
+    ekValueObjectSetMember(E, dcm, "interp", ekValueCreateCFunction(E, dcm_interp));
+    ekValueObjectSetMember(E, dcm, "canonicalize", ekValueCreateCFunction(E, dcm_canonicalize));
+    ekValueObjectSetMember(E, dcm, "die", ekValueCreateCFunction(E, dcm_die));
+    ekValueObjectSetMember(E, dcm, "read", ekValueCreateCFunction(E, dcm_read));
+    ekValueObjectSetMember(E, dcm, "write", ekValueCreateCFunction(E, dcm_write));
+    ekValueObjectSetMember(E, dcm, "mkdir_for_file", ekValueCreateCFunction(E, dcm_mkdir_for_file));
 
-    lua_newtable(L);
+    // cmdline args
+    v = ekValueCreateArray(E);
     {
         int i;
         for(i = 1; i < argc; ++i)
         {
-            lua_pushinteger(L, i);
-            lua_pushstring(L, argv[i]);
-            lua_settable(L, -3);
+            ekValueArrayPush(E, v, ekValueCreateString(E, argv[i]));
         }
     }
-    lua_setfield(L, -2, "args");
+    ekValueObjectSetMember(E, dcm, "args", v);
 
-    lua_pop(L, 1); // pop "dcm"
-    dcmLoadScript(L, "dcmBase", dcmBaseLuaData, dcmBaseLuaSize);
+    ekContextAddGlobal(E, "dcm", dcm);
+
+    ekContextEval(E, dcmBaseEkData, 0);
+    if(ekContextGetError(E))
+    {
+        error = strdup(ekContextGetError(E));
+    }
+    ekContextDestroy(E);
+    if(error)
+    {
+        printf("VM Bailed out: %s\n", error);
+    }
+    free(error);
 }
+
 
 // ---------------------------------------------------------------------------
 // Main
 
 int main(int argc, char **argv)
 {
-    lua_State *L = luaL_newstate();
-    dcmPrepareLua(L, argc, argv);
+    ekContext *E = ekContextCreate(NULL);
+    dcmPrepare(E, argc, argv);
     return 0;
 }
