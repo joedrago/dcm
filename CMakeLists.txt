@@ -24,7 +24,6 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 set(SOURCES
-    src/dcmVariant.c
     src/main.c
 )
 genHeader(SOURCES src/dcmBase.ek ${CMAKE_CURRENT_BINARY_DIR}/dcmBaseEk.h dcmBaseEk)
